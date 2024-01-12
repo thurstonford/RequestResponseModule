@@ -5,19 +5,40 @@ using System.Web;
 namespace RequestResponseModule
 {
     public class LogEntry
-	{        
+	{     
+        /// <summary>
+        /// The URL path that was requested.
+        /// </summary>
         public string Url { get; set; }
              
+        /// <summary>
+        /// The HTTP verb (GET, POST, PUT, DELETE etc)
+        /// </summary>
         public string Method { get; set; }
 		
-		public DateTime TimeStamp { get; set; }
-        		
+        /// <summary>
+        /// The date and time that the request was received by the application
+        /// </summary>
+		public DateTime TimeStamp { get; set; }        	
+
+        /// <summary>
+        /// The contents of the request body, if any.
+        /// </summary>
 		public string RequestBody { get; set; }
                 
+        /// <summary>
+        /// The contents of the response body, if any.
+        /// </summary>
         public string ResponseBody { get; set; }
                 
+        /// <summary>
+        /// TimeSpan that indicates how long it took to process the request.
+        /// </summary>
         public TimeSpan ProcessingTime { get; set; }
                 
+        /// <summary>
+        /// The response HTTP status code.
+        /// </summary>
         public int HttpStatusCode { get; set; }
 
         public override string ToString() {

@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
-using System.Text.RegularExpressions;
 using System.Web;
 
 namespace RequestResponseModule
@@ -16,38 +15,51 @@ namespace RequestResponseModule
         }
 
         public void Init(HttpApplication context) {
+            // Register our events and handlers
             context.BeginRequest += new EventHandler(Context_BeginRequest);
             context.EndRequest += new EventHandler(Context_EndRequest);
         }
 
+        /// <summary>
+        /// Determines whether this request is to be logged based on the config settings and values.
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         private bool IsLoggable(HttpRequest request) {            
             bool result = false;
 
             string path = request.Url.AbsolutePath?.ToLower();
 
             // Don't log unless explicitly enabled in the config
+            // If the setting is missing, we don't log.
             bool enabled = bool.Parse(_appSettings["requestResponseLogger.enabled"] ?? "False");
 
             if(!enabled) { 
                 return false;
             }
 
+            // Grab the paths to include from the config file.
             string[] filterPathInclude = _appSettings["requestResponseLogger.path.include"]?.Split(',');
+            // Grab the paths to exclude from the config file.
             string[] filterPathExclude = _appSettings["requestResponseLogger.path.exclude"]?.Split(',');
 
+            // Check if we have a match on the "include" filter
             if(filterPathInclude.Length > 0) {                
                 foreach(string s in filterPathInclude) {                        
                     if(path.Contains(s.Trim())) {
                         result = true;
+                        // Exit the loop - no need for futher processing
                         break;
                     }
                 }                
             }
 
+            // Check if the path contains any of the "exlude" filter values
             if(filterPathExclude.Length > 0) {
                 foreach(string s in filterPathExclude) {
                     if(path.Contains(s.Trim())) {
                         result = false;
+                        // Exit the loop - no need for futher processing
                         break;
                     }
                 }
@@ -59,6 +71,7 @@ namespace RequestResponseModule
         private void Context_BeginRequest(object sender, EventArgs e) {            
             HttpRequest request = HttpContext.Current.Request;            
 
+            // Determine if this request is to be logged
             if(IsLoggable(request)) {
                 HttpResponse response = HttpContext.Current.Response;
 
@@ -66,8 +79,9 @@ namespace RequestResponseModule
                 OutputFilterStream filter = new OutputFilterStream(response.Filter);
                 response.Filter = filter;
 
-                // Add the filter to the Context.Items so we can access if again later
+                // Add the filter to the Context.Items so we can access it again later
                 HttpContext.Current.Items.Add("Filter", filter);
+
                 // Flag the request start date so we can determine the processing duration
                 HttpContext.Current.Items.Add("BeginRequest", DateTime.Now);
             }
@@ -78,7 +92,10 @@ namespace RequestResponseModule
 
             HttpRequest request = httpApplication.Request;
             HttpResponse response = httpApplication.Response;
+
+            // Determine if this request is to be logged
             bool loggable = IsLoggable(request);
+
             try {
                 if(loggable) {
                     string uri = request.Url.PathAndQuery.ToLower();
@@ -87,6 +104,8 @@ namespace RequestResponseModule
                     string responseBody = null;
 
                     if(response.Filter != null) {
+                        // Use the OutputFilterStream object that was saved to
+                        // HttpContext.Current.Items to get a copy of the response stream.
                         OutputFilterStream filter = (OutputFilterStream)HttpContext.Current.Items["Filter"];
                         responseBody = filter?.ReadStream();
                     }
@@ -95,6 +114,7 @@ namespace RequestResponseModule
 
                     LogEntry logEntry = null;
 
+                    // Get the request body
                     using(StreamReader srInput = new StreamReader(
                         request.InputStream,
                         request.ContentEncoding)) {
@@ -102,6 +122,7 @@ namespace RequestResponseModule
                         requestBody = srInput.ReadToEnd() ?? String.Empty;
                     }
 
+                    // Create a new LogEntry object and assign the values
                     logEntry = new LogEntry() {
                         Url = uri,
                         RequestBody = requestBody,
@@ -112,6 +133,7 @@ namespace RequestResponseModule
                         ResponseBody = responseBody ?? string.Empty
                     };
 
+                    // Write to the log file
                     LogWriter.Instance.Write(logEntry.ToString());
                 }
             } catch(Exception ex) {
@@ -123,6 +145,8 @@ namespace RequestResponseModule
                         EventLogEntryType.Error);
                 }
             } finally {
+                // Add the custom response header to indicate
+                // if the request qualified to be logged.
                 response.Headers.Add("Loggable", loggable.ToString());
             }
         }        

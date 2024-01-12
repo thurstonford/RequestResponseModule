@@ -38,7 +38,6 @@ namespace RequestResponseModule
             }
         }
 
-
         public override bool CanRead {
             get { return this.InnerStream.CanRead; }
         }
