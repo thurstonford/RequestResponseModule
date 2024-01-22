@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace RequestResponseModule
 {
@@ -148,8 +145,7 @@ namespace RequestResponseModule
 
                 //write to the last line                
                 LogFileStream.Seek(0, SeekOrigin.End);
-                LogStreamWriter.WriteLine(message);                
-                //LogStreamWriter.WriteLine(message);
+                LogStreamWriter.WriteLine(message);  
                 LogStreamWriter.Flush();
 
                 // Release the lock for the next write operation.

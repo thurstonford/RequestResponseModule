@@ -44,23 +44,23 @@ namespace RequestResponseModule
             // Grab the paths to exclude from the config file.
             string[] filterPathExclude = _appSettings["requestResponseLogger.path.exclude"]?.Split(',');
 
-            // Check if we have a match on the "include" filter
+            // Check if we have a match on the "include" filter.
             if(filterPathInclude.Length > 0) {                
                 foreach(string s in filterPathInclude) {                        
                     if(path.Contains(s.Trim())) {
                         result = true;
-                        // Exit the loop - no need for futher processing
+                        // Exit the loop - no need for futher processing.
                         break;
                     }
                 }                
             }
 
-            // Check if the path contains any of the "exlude" filter values
+            // Check if the path contains any of the "exlude" filter values.
             if(filterPathExclude.Length > 0) {
                 foreach(string s in filterPathExclude) {
                     if(path.Contains(s.Trim())) {
                         result = false;
-                        // Exit the loop - no need for futher processing
+                        // Exit the loop - no need for futher processing.
                         break;
                     }
                 }
@@ -70,21 +70,28 @@ namespace RequestResponseModule
         }
 
         private void Context_BeginRequest(object sender, EventArgs e) {            
-            HttpRequest request = HttpContext.Current.Request;            
+            HttpRequest request = HttpContext.Current.Request;
 
-            // Determine if this request is to be logged
+            // Determine if this request is to be logged.
             if(IsLoggable(request)) {
                 HttpResponse response = HttpContext.Current.Response;
 
-                // Add this Stream object to the response Filter so we can access the response output (response.OutputStream is not directly readable).
+                // Add this Stream object to the response Filter so we can access the
+                // response output (response.OutputStream is not directly readable).
                 OutputFilterStream filter = new OutputFilterStream(response.Filter);
                 response.Filter = filter;
 
-                // Add the filter to the Context.Items so we can access it again later
+                // Add the filter to the Context.Items so we can access it again later.
                 HttpContext.Current.Items.Add("Filter", filter);
 
-                // Flag the request start date so we can determine the processing duration
+                // Flag the request start date so we can determine the processing duration.
                 HttpContext.Current.Items.Add("BeginRequest", DateTime.Now);
+
+                // Add the IsLoggable flag to the request so we don't have to
+                // re-run the filtering logic when processing the response.
+                HttpContext.Current.Items.Add("IsLoggable", true);
+            } else {
+                HttpContext.Current.Items.Add("IsLoggable", false);
             }
         }        
 
@@ -94,8 +101,8 @@ namespace RequestResponseModule
             HttpRequest request = httpApplication.Request;
             HttpResponse response = httpApplication.Response;
 
-            // Determine if this request is to be logged
-            bool loggable = IsLoggable(request);
+            // Determine if this request is to be logged.
+            bool loggable = (bool)httpApplication.Context.Items["IsLoggable"];
 
             try {
                 if(loggable) {
@@ -115,7 +122,7 @@ namespace RequestResponseModule
 
                     LogEntry logEntry = null;
 
-                    // Get the request body
+                    // Get the request body.
                     using(StreamReader srInput = new StreamReader(
                         request.InputStream,
                         request.ContentEncoding)) {
@@ -123,7 +130,7 @@ namespace RequestResponseModule
                         requestBody = srInput.ReadToEnd() ?? String.Empty;
                     }
 
-                    // Create a new LogEntry object and assign the values
+                    // Create a new LogEntry object and assign the values.
                     logEntry = new LogEntry() {
                         Url = uri,
                         RequestBody = requestBody,
