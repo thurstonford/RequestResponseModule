@@ -1,83 +1,122 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
-using System.Web;
+using System.Threading.Tasks;
 
 namespace RequestResponseModule
 {
-    public class LogWriter
+    public sealed class LogWriter
     {
-        // Holds the instance of the Singleton
-        private static LogWriter _instance;
-        private static readonly string _rootPath = HttpContext.Current.Server.MapPath("~/");
-        private static readonly string _logPath = _rootPath + "Logs\\RequestResponse\\";        
-        // Used to synchronize writing to the log file.
-        private static SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);        
-        // FileStream object used when writing to the log file.
-        private FileStream _fileStream;
-        // Streamwriter object used when writing to the log file.
-        private StreamWriter _streamWriter;
-        // Used to synchronize writing to the errors file.
-        private static SemaphoreSlim _errorsSemaphore = new SemaphoreSlim(1, 1);
-        // FileStream object used when writing to the errors file.
-        private FileStream _errorsFileStream;
-        // Streamwriter object used when writing to the errors file.
-        private StreamWriter _errorsStreamWriter;
-        // The path to the errors file
-        private static readonly string _errorsFilePath = $"{_logPath}\\Errors.log";
+        // Lazy load the instance so we don't have to worry about
+        // double lock checking when creating the single instance.
+        private static readonly Lazy<LogWriter> _instance = new Lazy<LogWriter>(() => new LogWriter());
 
-        public static LogWriter Instance
-        {
-            get
-            {                
-                if (_instance == null) {
-                    _instance = new LogWriter();
-                }              
-                return _instance;
+        private static readonly string _path = System.IO.Path.Combine(AppContext.BaseDirectory, "Logs/RequestResponse/");
+        private static readonly string _dateFormat = "yyyy-MM-dd HH:mm:ss.fff";
+
+        // Used to synchronize writing to the log file.
+        private SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);        
+        // FileStream object used when writing to the log file.
+        private static FileStream _fileStream;
+        // Streamwriter object used when writing to the log file.
+        private static StreamWriter _streamWriter;
+        // Used to synchronize writing to the errors file.
+        private SemaphoreSlim _errorsSemaphore = new SemaphoreSlim(1, 1);
+        // FileStream object used when writing to the errors file.
+        private static FileStream _errorsFileStream;
+        // Streamwriter object used when writing to the errors file.
+        private static StreamWriter _errorsStreamWriter;
+
+        public static LogWriter Instance {
+            get {
+                return _instance.Value;
             }
         }
 
-        private string FilePath { 
+        private string LogFilePath { 
             get { 
-                return $"{_logPath}\\{DateTime.Now:yyyyMMdd}.json"; 
+                return $"{Path}/{DateTime.Now:yyyyMMdd}.json"; 
             } 
+        }
+
+        private string ErrorFilePath {
+            get {
+                return $"{Path}/Errors.log";
+            }
+        }
+
+        private string Path { 
+            get { return _path; } 
+        }
+
+        private SemaphoreSlim LogSemaphore { 
+            get { return Instance._semaphore; }
+        }
+
+        private static FileStream LogFileStream { 
+            get { return _fileStream; }
+            set { _fileStream = value; }
+        }
+
+        private static StreamWriter LogStreamWriter { 
+            get { return _streamWriter; }
+            set { _streamWriter = value; }
+        }
+
+        private SemaphoreSlim ErrorsSemaphore { 
+            get { return Instance._errorsSemaphore; } 
+        }
+
+        private static FileStream ErrorsFileStream {
+            get { return _errorsFileStream; }
+            set { _errorsFileStream = value; }
+        }
+
+        private static StreamWriter ErrorsStreamWriter {
+            get { return _errorsStreamWriter; }
+            set { _errorsStreamWriter = value; }
         }
 
         /// <summary>
         /// Private constructor to support Singleton pattern.
         /// </summary>
-        private LogWriter() {            
-            InitializeLog();
+        private LogWriter() {
+            CreateDirectoryStructure();
+            InitializeLog();            
             InitializeErrorLog();
         }
 
-        /// <summary>
-        /// Creates the directory structure and new log file, if required.
-        /// </summary>
-        private void InitializeLog() {
-            try {                                
-                if(!Directory.Exists(_logPath)) {
-                    Directory.CreateDirectory(_logPath);
+        private void CreateDirectoryStructure() {
+            try {
+                if(!Directory.Exists(Path)) {
+                    Directory.CreateDirectory(Path);
                 }
-
-                _fileStream = new FileStream(FilePath, FileMode.OpenOrCreate);
-                _streamWriter = new StreamWriter(_fileStream);                
             } catch(Exception ex) {
                 LogErrors(ex);
             }
         }
 
         /// <summary>
+        /// Creates the directory structure and new log file, if required.
+        /// </summary>
+        private void InitializeLog() {
+            try {
+                LogFileStream = new FileStream(LogFilePath, FileMode.OpenOrCreate);
+                LogStreamWriter = new StreamWriter(LogFileStream);                
+            } catch(Exception ex) {
+                LogErrors(ex);
+            } 
+        }        
+
+        /// <summary>
         /// Creates the directory structure and an errors file.
         /// </summary>
         private void InitializeErrorLog() {
             try {
-                if(!Directory.Exists(_logPath)) {
-                    Directory.CreateDirectory(_logPath);
-                }
-
-                _errorsFileStream = new FileStream(_errorsFilePath, FileMode.OpenOrCreate);
-                _errorsStreamWriter = new StreamWriter(_errorsFileStream);
+                ErrorsFileStream = new FileStream(ErrorFilePath, FileMode.OpenOrCreate);
+                ErrorsStreamWriter = new StreamWriter(ErrorsFileStream);                
             } catch(Exception ex) {
                 LogErrors(ex);
             }
@@ -87,61 +126,61 @@ namespace RequestResponseModule
         /// Writes to the log file, creating a new one if necessary.
         /// </summary>
         /// <param name="message"></param>
-        public void Write(string message)
-        {
-            try {
+        public void Write(string message) {
+            try {                
                 // Prevent contention for the file.
-                _semaphore.Wait();
+                LogSemaphore.Wait();
 
                 // We may have rolled over into a new day so create a
                 // new log file and dereference the previous log file.
-                if(!File.Exists(FilePath)) {
-                    try { 
-                        _streamWriter?.Close();
-                        _fileStream?.Close();
+                if(!File.Exists(LogFilePath)) {
+                    try {
+                        LogStreamWriter?.Close();
+                        LogFileStream?.Close();
                     } catch(Exception ex) {
                         LogErrors(ex);
                     }
                 }
 
-                if(_fileStream == null || _streamWriter == null) {
+                if(LogFileStream == null || LogStreamWriter == null) {
                     InitializeLog();
                 }
 
                 //write to the last line                
-                _fileStream.Seek(0, SeekOrigin.End);
-                _streamWriter.WriteLine(message);
-                _streamWriter.Flush();
+                LogFileStream.Seek(0, SeekOrigin.End);
+                LogStreamWriter.WriteLine(message);                
+                //LogStreamWriter.WriteLine(message);
+                LogStreamWriter.Flush();
 
                 // Release the lock for the next write operation.
-                _semaphore.Release();
+                LogSemaphore.Release();
             } catch(Exception ex) {
                 // Release the lock
-                _semaphore.Release();
+                LogSemaphore.Release();
                 LogErrors(ex);
             }
         }
 
-        public void LogErrors(Exception ex) {
+        private void LogErrors(Exception ex) {
             try {
                 // Prevent contention for the errors file.
-                _errorsSemaphore.Wait();
+                ErrorsSemaphore.Wait();
                 
                 // Creates a new file if it doesn't yet exist, or gets a reference to the existing file.
-                if(_errorsFileStream == null || _errorsStreamWriter == null) {
+                if(ErrorsFileStream == null || ErrorsStreamWriter == null) {
                     InitializeErrorLog();
                 }
-                                
+
                 // Add the error to the end of the file.
-                _errorsFileStream.Seek(0, SeekOrigin.End);
-                _errorsStreamWriter.WriteLine($"ERROR - {DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")} - {ex.GetBaseException()}");
-                _errorsStreamWriter.Flush();
+                ErrorsFileStream.Seek(0, SeekOrigin.End);
+                ErrorsStreamWriter.WriteLine($"ERROR - {DateTime.Now.ToString(_dateFormat)} - {ex.GetBaseException()}");
+                ErrorsStreamWriter.Flush();
 
                 // Release the lock
-                _errorsSemaphore.Release();
+                ErrorsSemaphore.Release();
             } catch(Exception) {
                 // Release the lock
-                _errorsSemaphore.Release();
+                ErrorsSemaphore.Release();
             }             
         }
     }

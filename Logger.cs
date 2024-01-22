@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using System.Web;
 
 namespace RequestResponseModule
@@ -133,8 +134,11 @@ namespace RequestResponseModule
                         ResponseBody = responseBody ?? string.Empty
                     };
 
-                    // Write to the log file
-                    LogWriter.Instance.Write(logEntry.ToString());
+                    // Run the IO on a separate thread so
+                    // we don't block the main thread.
+                    Task.Run(() => {
+                        LogWriter.Instance.Write(logEntry.ToString());
+                    }).ConfigureAwait(false);                    
                 }
             } catch(Exception ex) {
                 // Log the error to the event log
